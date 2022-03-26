@@ -1,0 +1,2 @@
+ Checks: '-checks=bugprone-*,cert-*,clang-analyzer-*,concurrency-*,cppcoreguidelines-*,misc-*,modernize-*,-modernize-use-trailing-return-type,performance-*,portability-*,readability-*,-cppcoreguidelines-owning-memory'
+ UseColor: true
