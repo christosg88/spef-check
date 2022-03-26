@@ -32,4 +32,9 @@ project(spef-check
   DESCRIPTION "A tool to parse and check the correctness of a SPEF file"
   LANGUAGES CXX)
 
+find_package(pegtl)
+
 add_executable(spef-check spef-check.cpp)
+target_link_libraries(spef-check PRIVATE taocpp::pegtl)
+
+add_subdirectory(examples)
