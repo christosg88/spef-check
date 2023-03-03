@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # enable all warnings and treat them as errors
 add_compile_options(-Wall -Wextra -pedantic -Werror)
-# enable clang-tidy checks, and tread warnings as errors
+# enable clang-tidy checks
 set(CMAKE_CXX_CLANG_TIDY clang-tidy)
 
 # produce colored diagnostics when using Ninja
@@ -37,4 +37,3 @@ find_package(pegtl)
 add_executable(spef-check spef-check.cpp)
 target_link_libraries(spef-check PRIVATE taocpp::pegtl)
 
-add_subdirectory(examples)
