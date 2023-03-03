@@ -73,18 +73,31 @@ int main(int argc, char const * const * argv) {
 
   std::filesystem::path const spef_file{argv[1]};
 
-  pegtl::read_input input{spef_file};
-
   bool success = false;
+
+  // outer try/catch for normal exceptions that might occur for example if the
+  // file is not found
   try {
-    success = pegtl::parse<header_def, print_action>(input);
-  } catch (pegtl::parse_error &err) {
-    std::cerr << "An exception occured during parsing:\n";
-    std::cerr << err.what() << '\n';
+    pegtl::read_input input{spef_file};
+
+    // inner try/catch for the parser exceptions
+    try {
+      success = pegtl::parse<header_def, print_action>(input);
+    } catch (pegtl::parse_error &err) {
+      std::cerr << "ERROR: An exception occurred during parsing:\n";
+      // this catch block needs access to the input
+      auto const &pos = err.positions().front();
+      std::cerr << err.what() << '\n'
+                << input.line_at(pos) << '\n'
+                << std::setw((int)pos.column) << '^' << std::endl;
+      std::cerr << err.what() << '\n';
+    }
+  } catch (std::exception const &e) {
+    std::cerr << e.what() << std::endl;
   }
 
   if (!success) {
-    std::cerr << "Paring failed\n";
+    std::cerr << "Parsing failed\n";
     return 2;
   }
 
