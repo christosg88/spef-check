@@ -18,7 +18,7 @@ struct spef_exp_char : pegtl::one<'E', 'e'> {};
 struct spef_exp : pegtl::seq<spef_radix, spef_exp_char, spef_integer> {};
 struct spef_float : pegtl::sor<spef_decimal, spef_fraction, spef_exp> {};
 struct spef_number : pegtl::sor<spef_float, spef_integer> {};
-struct spef_pos_integer : pegtl::plus<pegtl::digit> {};
+struct spef_pos_integer : pegtl::plus<pegtl::digit> {};  // must not consume trailing whitespace
 struct spef_pos_decimal : pegtl::seq<pegtl::plus<pegtl::digit>, pegtl::one<'.'>, pegtl::opt<pegtl::plus<pegtl::digit>>> {};
 struct spef_pos_fraction : pegtl::seq<pegtl::one<'.'>, pegtl::plus<pegtl::digit>> {};
 struct spef_pos_radix : pegtl::sor<spef_pos_integer, spef_pos_decimal, spef_pos_fraction> {};
@@ -29,7 +29,7 @@ struct spef_pos_number : pegtl::sor<spef_pos_integer, spef_pos_float> {};
 // characters
 struct spef_hchar : pegtl::one<'.', '/', ':', '|'> {};
 struct spef_hier_delim : spef_hchar {};
-struct spef_pin_delim : spef_hchar {};
+struct spef_pin_delim : spef_hchar {};  // must not consume trailing whitespace
 struct spef_special_char : pegtl::one<'!', '#', '$', '%', '\'', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '`', '{', '|', '}', '~'> {};
 struct spef_escaped_char_set : pegtl::sor<spef_special_char, pegtl::one<'"'>> {};
 struct spef_escaped_char : pegtl::seq<pegtl::one<'\\'>, spef_escaped_char_set> {};
@@ -72,13 +72,13 @@ struct spef_header_def : pegtl::plus<pegtl::sor<spef_version, spef_design_name, 
 
 // name_map
 struct spef_mapped_item : pegtl::sor<spef_identifier, spef_bit_identifier, spef_path, spef_name, spef_physical_ref> {};
-struct spef_index : pegtl::seq<pegtl::one<'*'>, spef_pos_integer> {};
+struct spef_index : pegtl::seq<pegtl::one<'*'>, spef_pos_integer> {};  // must not consume trailing whitespace
 struct spef_name_map_entry : pegtl::seq<spef_index, sep, spef_mapped_item> {};
 struct spef_name_map : pegtl::seq<TAO_PEGTL_STRING("*NAME_MAP"), sep, pegtl::plus<spef_name_map_entry, sep>> {};
 
 // power_def
-struct spef_net_ref : pegtl::sor<spef_index, spef_path> {};
-struct spef_pnet_ref : pegtl::sor<spef_index, spef_physical_ref> {};
+struct spef_net_ref : pegtl::sor<spef_index, spef_path> {};  // must not consume trailing whitespace
+struct spef_pnet_ref : pegtl::sor<spef_index, spef_physical_ref> {};  // must not consume trailing whitespace
 struct spef_net_name : pegtl::sor<spef_net_ref, spef_pnet_ref> {};
 struct spef_power_net_def : pegtl::seq<TAO_PEGTL_STRING("*POWER_NETS"), sep, pegtl::plus<spef_net_name, sep>> {};
 #ifdef STRICT
@@ -90,14 +90,14 @@ struct spef_power_def : pegtl::seq<pegtl::star<spef_power_net_def>, pegtl::star<
 
 // conn_attr
 #ifdef STRICT
-struct spef_par_value : pegtl::sor<spef_float, pegtl::seq<spef_float, pegtl::one<':'>, spef_float, pegtl::one<':'>, spef_float>> {};
+struct spef_par_value : pegtl::sor<pegtl::seq<spef_float, sep>, pegtl::seq<pegtl::seq<spef_float, pegtl::one<':'>, spef_float, pegtl::one<':'>, spef_float>, sep>> {};
 #else
-struct spef_par_value : pegtl::sor<spef_number, pegtl::seq<spef_number, pegtl::one<':'>, spef_number, pegtl::one<':'>, spef_number>> {};
+struct spef_par_value : pegtl::sor<pegtl::seq<spef_number, sep>, pegtl::seq<pegtl::seq<spef_number, pegtl::one<':'>, spef_number, pegtl::one<':'>, spef_number>, sep>> {};
 #endif
 struct spef_coordinates : pegtl::seq<TAO_PEGTL_STRING("*C"), sep, spef_number, sep, spef_number, sep> {};
-struct spef_cap_load : pegtl::seq<TAO_PEGTL_STRING("*L"), sep, spef_par_value, sep> {};
+struct spef_cap_load : pegtl::seq<TAO_PEGTL_STRING("*L"), sep, spef_par_value> {};
 struct spef_threshold : pegtl::sor<spef_pos_fraction, pegtl::seq<spef_pos_fraction>, pegtl::one<':'>, spef_pos_fraction, pegtl::one<':'>, spef_pos_fraction> {};
-struct spef_slews : pegtl::seq<TAO_PEGTL_STRING("*S"), sep, spef_par_value, sep, spef_par_value, sep, pegtl::opt<spef_threshold, sep, spef_threshold, sep>> {};
+struct spef_slews : pegtl::seq<TAO_PEGTL_STRING("*S"), sep, spef_par_value, spef_par_value, pegtl::opt<spef_threshold, sep, spef_threshold, sep>> {};
 struct spef_cell_type : pegtl::sor<spef_index, spef_name> {};
 struct spef_driving_cell : pegtl::seq<TAO_PEGTL_STRING("*D"), sep, spef_cell_type, sep> {};
 struct spef_conn_attr : pegtl::sor<spef_coordinates, spef_cap_load, spef_slews, spef_driving_cell> {}; // consumes trailing space
@@ -122,7 +122,7 @@ struct spef_define_entry : pegtl::sor<pegtl::seq<TAO_PEGTL_STRING("*DEFINE"), se
 struct spef_define_def : pegtl::plus<spef_define_entry, sep> {};
 
 // variation_def
-struct spef_param_id : spef_integer {};
+struct spef_param_id : pegtl::seq<spef_integer> {};  // must not consume trailing whitespace
 struct spef_param_name : spef_qstring {};
 struct spef_param_type_for_cap : pegtl::one<'N', 'D', 'X'> {};
 struct spef_param_type_for_res : pegtl::one<'N', 'D', 'X'> {};
@@ -146,15 +146,28 @@ struct spef_pin_name : pegtl::seq<spef_inst_name, spef_pin_delim, spef_pin> {};
 struct spef_external_connection : pegtl::sor<spef_port_name, spef_pport_name> {};
 struct spef_internal_connection : pegtl::sor<spef_pin_name, spef_pnode_ref> {};
 struct spef_internal_node_name : pegtl::seq<spef_net_ref, spef_pin_delim, spef_pos_integer> {};
-struct spef_internal_node_coord : pegtl::seq<TAO_PEGTL_STRING("*N"), sep, spef_internal_node_name, sep, spef_coordinates> {};
-struct spef_conn_def : pegtl::sor<pegtl::seq<TAO_PEGTL_STRING("*P"), sep, spef_external_connection, sep, spef_direction, sep, pegtl::star<spef_conn_attr>>, pegtl::seq<TAO_PEGTL_STRING("*I"), sep, spef_internal_connection, sep, spef_direction, sep, pegtl::star<spef_conn_attr, sep>>> {};
-struct spef_conn_sec : pegtl::seq<TAO_PEGTL_STRING("*CONN"), sep, pegtl::plus<spef_conn_def, sep>, pegtl::star<spef_internal_node_coord, sep>> {};
-//struct spef_cap_sec {};
-//struct spef_res_sec {};
-//struct spef_induct_sec {};
-//struct spef_d_net : pegtl::seq<TAO_PEGTL_STRING("*D_NET"), sep, spef_net_ref, sep, spef_total_cap, sep, pegtl::opt<spef_routing_conf, sep>, pegtl::opt<spef_conn_sec, sep>, pegtl::opt<spef_cap_sec, sep>, pegtl::opt<spef_res_sec, sep>, pegtl::opt<spef_induct_sec, sep>, TAO_PEGTL_STRING("*END"), sep> {};
-//struct spef_d_net : pegtl::seq<TAO_PEGTL_STRING("*D_NET"), sep, spef_net_ref, sep, spef_total_cap, sep, pegtl::opt<spef_routing_conf, sep>, pegtl::opt<spef_conn_sec, sep>> {};
-struct spef_d_net : pegtl::seq<TAO_PEGTL_STRING("*D_NET"), sep, spef_net_ref, sep, spef_total_cap, sep, pegtl::opt<spef_conn_sec, sep>> {};
+struct spef_internal_node_coord : pegtl::seq<TAO_PEGTL_STRING("*N"), sep, spef_internal_node_name, sep, spef_coordinates, sep> {};
+struct spef_conn_def : pegtl::sor<pegtl::seq<TAO_PEGTL_STRING("*P"), sep, spef_external_connection, sep, spef_direction, sep, pegtl::star<spef_conn_attr>>, pegtl::seq<TAO_PEGTL_STRING("*I"), sep, spef_internal_connection, sep, spef_direction, sep, pegtl::star<spef_conn_attr>>> {};
+struct spef_conn_sec : pegtl::seq<TAO_PEGTL_STRING("*CONN"), sep, pegtl::plus<spef_conn_def>, pegtl::star<spef_internal_node_coord>> {};
+
+// cap_sec
+struct spef_cap_id : pegtl::seq<spef_pos_integer, sep> {};
+struct spef_net_ref2 : spef_net_ref {};  // must not consume trailing whitespace
+struct spef_node_name : pegtl::seq<pegtl::sor<spef_external_connection, spef_internal_connection, spef_internal_node_name, spef_pnode_ref>, sep> {};
+struct spef_node_name2 : pegtl::sor<spef_node_name, pegtl::seq<spef_pnet_ref, spef_pin_delim, spef_pos_integer, sep>, pegtl::seq<spef_net_ref2, spef_pin_delim, spef_pos_integer, sep>> {};
+struct spef_sensitivity_coeff : spef_float {};  // must not consume trailing whitespace
+struct spef_sensitivity : pegtl::seq<TAO_PEGTL_STRING("*SC"), sep, pegtl::plus<spef_param_id, pegtl::one<':'>, spef_sensitivity_coeff, sep>> {};
+struct spef_cap_elem : pegtl::sor<pegtl::seq<spef_cap_id, spef_node_name, spef_par_value, pegtl::opt<spef_sensitivity>>, pegtl::seq<spef_cap_id, spef_node_name, spef_node_name2, spef_par_value, pegtl::opt<spef_sensitivity>>> {};
+struct spef_cap_sec : pegtl::seq<TAO_PEGTL_STRING("*CAP"), sep, pegtl::plus<spef_cap_elem>> {};
+
+// res_sec
+struct spef_res_id : pegtl::seq<spef_pos_integer, sep> {};
+struct spef_res_elem : pegtl::seq<spef_res_id, spef_node_name, spef_node_name, spef_par_value, pegtl::opt<spef_sensitivity>> {};
+struct spef_res_sec : pegtl::seq<TAO_PEGTL_STRING("*RES"), sep, pegtl::plus<spef_res_elem>> {};
+
+//struct spef_induct_sec : pegtl::opt<"GRAMMAR END"> {};
+//struct spef_d_net : pegtl::seq<TAO_PEGTL_STRING("*D_NET"), sep, spef_net_ref, sep, spef_total_cap, pegtl::opt<spef_routing_conf>, pegtl::opt<spef_conn_sec>, pegtl::opt<spef_cap_sec>, pegtl::opt<spef_res_sec>, pegtl::opt<spef_induct_sec>, TAO_PEGTL_STRING("*END"), sep> {};
+struct spef_d_net : pegtl::seq<TAO_PEGTL_STRING("*D_NET"), sep, spef_net_ref, sep, spef_total_cap, pegtl::opt<spef_routing_conf>, pegtl::opt<spef_conn_sec>, pegtl::opt<spef_cap_sec>, pegtl::opt<spef_res_sec>, TAO_PEGTL_STRING("*END"), sep> {};
 //struct spef_r_net{};
 //struct spef_d_pnet{};
 //struct spef_r_pnet{};

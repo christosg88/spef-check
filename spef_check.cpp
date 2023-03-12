@@ -32,10 +32,9 @@ int main(int argc, char const * const * argv) {
 
     // inner try/catch for the parser exceptions
     try {
-      pegtl::tracer<pegtl::tracer_traits<true, true, true, 4>> tracer(input);
-      tracer.parse<spef_grammar>(input);
-      //pegtl::standard_trace<spef_grammar>(input);
-      //success = pegtl::parse<spef_grammar, print_action>(input);
+      //pegtl::tracer<pegtl::tracer_traits<true, true, true, 4>> tracer(input);
+      //tracer.parse<spef_grammar>(input);
+      success = pegtl::parse<spef_grammar, print_action>(input);
     } catch (pegtl::parse_error &err) {
       std::cerr << "ERROR: An exception occurred during parsing:\n";
       // this catch block needs access to the input

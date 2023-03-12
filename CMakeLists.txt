@@ -35,6 +35,6 @@ project(spef-check
 
 find_package(pegtl)
 
-add_executable(spef-check spef-check.cpp)
-target_link_libraries(spef-check PRIVATE taocpp::pegtl)
+add_executable(spef_check spef_check.cpp)
+target_link_libraries(spef_check PRIVATE taocpp::pegtl)
 
