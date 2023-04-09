@@ -66,7 +66,7 @@ struct spef_program_name : pegtl::seq<TAO_PEGTL_STRING("*PROGRAM"), sep, pegtl::
 struct spef_program_version : pegtl::seq<TAO_PEGTL_STRING("*VERSION"), sep, pegtl::must<spef_qstring, sep>> {};
 struct spef_design_flow : pegtl::seq<TAO_PEGTL_STRING("*DESIGN_FLOW"), sep, pegtl::must<pegtl::plus<spef_qstring, sep>>> {};
 struct spef_hierarchy_div_def : pegtl::seq<TAO_PEGTL_STRING("*DIVIDER"), sep, pegtl::must<spef_hier_delim, sep>> {};
-struct spef_pin_delim_def : pegtl::seq<TAO_PEGTL_STRING("*DELIMITER"), sep, pegtl::must<spef_hier_delim, sep>> {};
+struct spef_pin_delim_def : pegtl::seq<TAO_PEGTL_STRING("*DELIMITER"), sep, pegtl::must<spef_pin_delim, sep>> {};
 struct spef_bus_delim_def : pegtl::seq<TAO_PEGTL_STRING("*BUS_DELIMITER"), sep, pegtl::must<spef_prefix_bus_delim, sep, pegtl::opt<spef_suffix_bus_delim, sep>>> {};
 struct spef_header_def : pegtl::plus<pegtl::sor<spef_version, spef_design_name, spef_date, spef_vendor, spef_program_name, spef_program_version, spef_design_flow, spef_hierarchy_div_def, spef_pin_delim_def, spef_bus_delim_def, spef_unit_def>> {};
 

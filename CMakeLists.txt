@@ -36,7 +36,7 @@ project(spef-check
 
 find_package(pegtl)
 
-add_executable(spef_check spef_check.cpp)
+add_executable(spef_check spef_check.cpp spef_actions.cpp)
 target_link_libraries(spef_check PRIVATE taocpp::pegtl)
 if(CMAKE_BUILD_TYPE STREQUAL Profile)
   target_link_options(spef_check PRIVATE "-pg")

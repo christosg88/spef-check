@@ -5,6 +5,7 @@
 #include <tao/pegtl/contrib/trace.hpp>
 
 #include "spef_structs.hpp"
+#include "spef_actions.hpp"
 
 namespace pegtl = tao::pegtl;
 
@@ -33,7 +34,10 @@ int main(int argc, char const * const * argv) {
     try {
       //pegtl::tracer<pegtl::tracer_traits<true, true, true, 4>> tracer(input);
       //tracer.parse<spef_grammar>(input);
-      success = pegtl::parse<pegtl::must<spef_grammar>>(input);
+      SPEF spef;
+      success = pegtl::parse<pegtl::must<spef_grammar>, spef_action>(input, spef);
+
+      std::cout << spef;
     } catch (pegtl::parse_error &err) {
       std::cerr << "ERROR: An exception occurred during parsing:\n";
       // this catch block needs access to the input
