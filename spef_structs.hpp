@@ -3,6 +3,8 @@
 
 #include <tao/pegtl.hpp>
 
+// GRAMMAR STRUCTS
+// clang-format off
 namespace pegtl = tao::pegtl;
 
 // helpers
@@ -82,7 +84,7 @@ struct spef_pnet_ref : pegtl::sor<spef_index, spef_physical_ref> {};  // must no
 struct spef_net_name : pegtl::sor<spef_net_ref, spef_pnet_ref> {};
 struct spef_power_net_def : pegtl::seq<TAO_PEGTL_STRING("*POWER_NETS"), sep, pegtl::must<pegtl::plus<spef_net_name, sep>>> {};
 struct spef_ground_net_def : pegtl::seq<TAO_PEGTL_STRING("*GROUND_NETS"), sep, pegtl::must<pegtl::plus<spef_net_name, sep>>> {};
-struct spef_power_def : pegtl::seq<pegtl::star<spef_power_net_def>, pegtl::star<spef_ground_net_def>> {};
+struct spef_power_def : pegtl::plus<pegtl::sor<spef_power_net_def, spef_ground_net_def>> {};
 
 // conn_attr
 #ifdef STRICT
@@ -118,7 +120,7 @@ struct spef_define_entry : pegtl::sor<pegtl::seq<TAO_PEGTL_STRING("*DEFINE"), se
 struct spef_define_def : pegtl::plus<spef_define_entry, sep> {};
 
 // variation_def
-struct spef_param_id : pegtl::seq<spef_integer> {};  // must not consume trailing whitespace
+struct spef_param_id : spef_integer {};  // must not consume trailing whitespace
 struct spef_param_name : spef_qstring {};
 struct spef_param_type_for_cap : pegtl::one<'N', 'D', 'X'> {};
 struct spef_param_type_for_res : pegtl::one<'N', 'D', 'X'> {};
@@ -145,7 +147,9 @@ struct spef_external_connection : pegtl::seq<pegtl::sor<spef_port_name, spef_ppo
 struct spef_internal_connection : pegtl::sor<spef_pin_name, spef_pnode_ref> {};  // consumes whitespace
 struct spef_internal_node_name : pegtl::seq<spef_net_ref, spef_pin_delim, spef_pos_integer, sep> {}; // consumes whitespace
 struct spef_internal_node_coord : pegtl::seq<TAO_PEGTL_STRING("*N"), sep, pegtl::must<spef_internal_node_name, spef_coordinates, sep>> {};
-struct spef_conn_def : pegtl::sor<pegtl::seq<TAO_PEGTL_STRING("*P"), sep, pegtl::must<spef_external_connection, spef_direction, sep, pegtl::star<spef_conn_attr>>>, pegtl::seq<TAO_PEGTL_STRING("*I"), sep, pegtl::must<spef_internal_connection, spef_direction, sep, pegtl::star<spef_conn_attr>>>> {};
+struct spef_internal_connection_def : pegtl::seq<TAO_PEGTL_STRING("*I"), sep, pegtl::must<spef_internal_connection, spef_direction, sep, pegtl::star<spef_conn_attr>>> {};
+struct spef_external_connection_def : pegtl::seq<TAO_PEGTL_STRING("*P"), sep, pegtl::must<spef_external_connection, spef_direction, sep, pegtl::star<spef_conn_attr>>> {};
+struct spef_conn_def : pegtl::sor<spef_external_connection_def, spef_internal_connection_def> {};
 struct spef_conn_sec : pegtl::seq<TAO_PEGTL_STRING("*CONN"), sep, pegtl::must<pegtl::plus<spef_conn_def>, pegtl::star<spef_internal_node_coord>>> {};
 
 // cap_sec
@@ -155,7 +159,9 @@ struct spef_node_name : pegtl::sor<spef_external_connection, spef_internal_conne
 struct spef_node_name2 : pegtl::sor<spef_node_name, pegtl::seq<spef_pnet_ref, spef_pin_delim, spef_pos_integer, sep>, pegtl::seq<spef_net_ref2, spef_pin_delim, spef_pos_integer, sep>> {};  // consumes whitespace
 struct spef_sensitivity_coeff : spef_float {};  // must not consume trailing whitespace
 struct spef_sensitivity : pegtl::seq<TAO_PEGTL_STRING("*SC"), sep, pegtl::must<pegtl::plus<spef_param_id, pegtl::one<':'>, spef_sensitivity_coeff, sep>>> {};  // consumes whitespace
-struct spef_cap_elem : pegtl::sor<pegtl::seq<spef_cap_id, spef_node_name, spef_par_value, pegtl::opt<spef_sensitivity>>, pegtl::seq<spef_cap_id, spef_node_name, spef_node_name2, spef_par_value, pegtl::opt<spef_sensitivity>>> {};
+struct spef_cap_elem_ground : pegtl::seq<spef_cap_id, spef_node_name, spef_par_value, pegtl::opt<spef_sensitivity>> {};
+struct spef_cap_elem_coupling : pegtl::seq<spef_cap_id, spef_node_name, spef_node_name2, spef_par_value, pegtl::opt<spef_sensitivity>> {};
+struct spef_cap_elem : pegtl::sor<spef_cap_elem_ground, spef_cap_elem_coupling> {};
 struct spef_cap_sec : pegtl::seq<TAO_PEGTL_STRING("*CAP"), sep, pegtl::must<pegtl::plus<spef_cap_elem>>> {};
 
 // res_sec
@@ -192,14 +198,231 @@ struct spef_driver_pin : pegtl::seq<TAO_PEGTL_STRING("*DRIVER"), sep, pegtl::mus
 struct spef_driver_cell : pegtl::seq<TAO_PEGTL_STRING("*CELL"), sep, pegtl::must<spef_cell_type, sep>> {};
 struct spef_pi_model : pegtl::seq<TAO_PEGTL_STRING("*C2_R1_C1"), sep, pegtl::must<spef_par_value, sep, spef_par_value, sep, spef_par_value, sep>> {};
 struct spef_driver_reduc : pegtl::seq<spef_driver_pin, spef_driver_cell, spef_pi_model, spef_load_desc> {};
-struct spef_r_net : pegtl::seq<TAO_PEGTL_STRING("*R_NET"), sep, pegtl::must<spef_net_ref, sep, spef_total_cap, pegtl::opt<spef_routing_conf>, pegtl::opt<spef_driver_reduc>, TAO_PEGTL_STRING("*END"), sep>> {};
+struct spef_r_net_begin : TAO_PEGTL_STRING("*R_NET") {};
+struct spef_r_net_end : TAO_PEGTL_STRING("*END") {};
+struct spef_r_net : pegtl::seq<spef_r_net_begin, sep, pegtl::must<spef_net_ref, sep, spef_total_cap, pegtl::opt<spef_routing_conf>, pegtl::opt<spef_driver_reduc>, spef_r_net_end, sep>> {};
 
 // d_net (detailed net)
-struct spef_d_net : pegtl::seq<TAO_PEGTL_STRING("*D_NET"), sep, pegtl::must<spef_net_ref, sep, spef_total_cap, pegtl::opt<spef_routing_conf>, pegtl::opt<spef_conn_sec>, pegtl::opt<spef_cap_sec>, pegtl::opt<spef_res_sec>, pegtl::opt<spef_induc_sec>, TAO_PEGTL_STRING("*END"), sep>> {};
+struct spef_d_net_begin : TAO_PEGTL_STRING("*D_NET") {};
+struct spef_d_net_end : TAO_PEGTL_STRING("*END") {};
+struct spef_d_net : pegtl::seq<spef_d_net_begin, sep, pegtl::must<spef_net_ref, sep, spef_total_cap, pegtl::opt<spef_routing_conf>, pegtl::opt<spef_conn_sec>, pegtl::opt<spef_cap_sec>, pegtl::opt<spef_res_sec>, pegtl::opt<spef_induc_sec>, spef_d_net_end, sep>> {};
 
 // internal_def
 struct spef_nets : pegtl::sor<spef_d_net, spef_r_net, spef_d_pnet, spef_r_pnet> {};
 struct spef_internal_def : pegtl::plus<spef_nets> {};
 
 struct spef_grammar : pegtl::seq<spef_header_def, pegtl::opt<spef_name_map>, pegtl::opt<spef_power_def>, pegtl::opt<spef_external_def>, pegtl::opt<spef_define_def>, pegtl::opt<spef_variation_def>, spef_internal_def> {};
-#endif
+// clang-format on
+
+// ACTION STRUCTS
+
+#include <unordered_map>
+
+using cap_t = double;
+using res_t = double;
+using coord_t = double;
+using thresh_t = double;
+
+struct scaled_value {
+  double value{0};
+  std::string unit{};
+
+  [[nodiscard]] explicit constexpr operator bool() const {
+    return value != 0 || !unit.empty();
+  }
+};
+
+enum struct NetType {
+  Detailed,
+  Reduced
+};
+
+enum struct ConnType {
+  ExternalConnection,
+  InternalConnection,
+};
+
+enum struct DirType {
+  Input,
+  Output,
+  Bidirectional
+};
+
+enum struct ConnAttrType {
+  Coordinates,
+  CapLoad,
+  Slews,
+  DrivingCell
+};
+
+struct Coordinates {
+  coord_t x;
+  coord_t y;
+};
+
+struct Capacitances {
+  std::vector<cap_t> m_caps;  // size must be either 1 or 3
+};
+
+struct Thresholds {
+  std::vector<thresh_t> m_thresh;  // size must be either 1 or 3
+};
+
+struct ConnAttr {
+  ConnAttr(ConnAttrType type) : m_type{type} {};
+  ConnAttr() = delete;
+  ConnAttr(ConnAttr const &) = default;
+  ConnAttr(ConnAttr &&) = default;
+  ConnAttr &operator=(ConnAttr const &) = default;
+  ConnAttr &operator=(ConnAttr &&) = default;
+  virtual ~ConnAttr() = default;  // virtual destructor so the destructor of
+                                  // each subclass is called during destruction
+                                  // through std::unique_ptr pointing to the
+                                  // base class
+  ConnAttrType m_type;
+};
+
+struct CoordinatesAttr : ConnAttr {
+  CoordinatesAttr(Coordinates coord)
+      : ConnAttr(ConnAttrType::Coordinates),
+        m_coord(coord) {}
+  Coordinates m_coord;
+};
+
+struct CapLoadAttr : ConnAttr {
+  CapLoadAttr(Capacitances cap)
+      : ConnAttr(ConnAttrType::CapLoad),
+        m_cap(std::move(cap)) {}
+  Capacitances m_cap;
+};
+
+struct SlewsAttr : ConnAttr {
+  SlewsAttr(Capacitances cap1, Capacitances cap2)
+      : ConnAttr(ConnAttrType::Slews),
+        m_cap1(std::move(cap1)),
+        m_cap2(std::move(cap2)) {}
+  SlewsAttr(
+      Capacitances cap1,
+      Capacitances cap2,
+      Thresholds thresh1,
+      Thresholds thresh2)
+      : ConnAttr(ConnAttrType::Slews),
+        m_cap1(std::move(cap1)),
+        m_cap2(std::move(cap2)),
+        m_thresh1(std::move(thresh1)),
+        m_thresh2(std::move(thresh2)) {}
+  Capacitances m_cap1;
+  Capacitances m_cap2;
+  Thresholds m_thresh1;
+  Thresholds m_thresh2;
+};
+
+struct DrivingCellAttr : ConnAttr {
+  DrivingCellAttr(std::string cell)
+      : ConnAttr(ConnAttrType::DrivingCell),
+        m_cell(std::move(cell)) {}
+  std::string m_cell;
+};
+
+struct Port {
+  std::string m_name;
+  DirType m_direction;
+  std::vector<std::unique_ptr<ConnAttr>> m_conn_attrs;
+};
+
+struct PhysicalPort {
+  std::string m_name;
+  DirType m_direction;
+  std::vector<std::unique_ptr<ConnAttr>> m_conn_attrs;
+};
+
+struct DNet {
+  struct Connection;
+  struct InternalNode;
+  struct GroundCapacitance;
+  struct CouplingCapacitance;
+  struct Resistance;
+
+  std::string m_name;
+  cap_t m_total_cap;
+  std::vector<Connection> m_conns;
+  std::vector<InternalNode> m_nodes;
+  std::vector<GroundCapacitance> m_ground_caps;
+  std::vector<CouplingCapacitance> m_coupling_caps;
+  std::vector<Resistance> m_resistances;
+};
+
+struct DNet::Connection {
+  ConnType m_type;
+  std::string m_name;
+  DirType m_direction;
+  std::vector<std::unique_ptr<ConnAttr>> m_conn_attrs;
+};
+
+struct DNet::InternalNode {
+  std::string m_name;
+  std::unique_ptr<CoordinatesAttr> m_coords;
+};
+
+struct DNet::GroundCapacitance {
+  std::string m_id;
+  std::string m_node;
+  cap_t m_cap;
+};
+
+struct DNet::CouplingCapacitance {
+  std::string m_id;
+  std::string m_node1;
+  std::string m_node2;
+  cap_t m_cap;
+};
+
+struct DNet::Resistance {
+  std::string m_id;
+  std::string m_node1;
+  std::string m_node2;
+  res_t m_res;
+};
+
+struct RNet {
+  std::string m_name;
+  cap_t m_total_cap;
+};
+
+struct SPEF {
+  std::string m_version;
+  std::string m_design_name;
+  std::string m_date;
+  std::string m_vendor;
+  std::string m_program_name;
+  std::string m_program_version;
+  std::string m_design_flow;
+  char m_hierarchy_div_def = '\0';
+  char m_pin_delim_def = '\0';
+  char m_prefix_bus_delim = '\0';
+  char m_suffix_bus_delim = '\0';
+  scaled_value m_time_scale;    // in seconds
+  scaled_value m_cap_scale;     // in Farad
+  scaled_value m_res_scale;     // in Ohm
+  scaled_value m_induct_scale;  // in Henry
+  std::vector<std::string> m_power_nets;
+  std::vector<std::string> m_ground_nets;
+  std::vector<Port> m_ports;
+  std::vector<PhysicalPort> m_physcial_ports;
+  std::unordered_map<std::string, std::string> m_name_map;
+  std::vector<DNet> m_d_nets;
+  std::vector<RNet> m_r_nets;
+};
+
+// temporary data structure to be filled during parsing, and parts of it can be
+// then moved to the SPEF structure
+struct SPEFHelper {
+  std::vector<std::string_view> m_tokens;
+  std::vector<std::string_view> m_tokens2;
+  bool reading_d_net;
+  bool reading_r_net;
+  DNet m_current_d_net;
+  RNet m_current_r_net;
+  std::vector<std::unique_ptr<ConnAttr>> attributes;
+};
+#endif  // SPEF_STRUCTS_HPP

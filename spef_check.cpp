@@ -1,15 +1,14 @@
-#include <iostream>
-#include <filesystem>
-
-#include <tao/pegtl/contrib/analyze.hpp>
-#include <tao/pegtl/contrib/trace.hpp>
-
-#include "spef_structs.hpp"
 #include "spef_actions.hpp"
+#include "spef_structs.hpp"
+#include "spef_write.hpp"
+#include <filesystem>
+#include <iostream>
+#include <tao/pegtl/contrib/analyze.hpp>
+//#include <tao/pegtl/contrib/trace.hpp>
 
 namespace pegtl = tao::pegtl;
 
-int main(int argc, char const * const * argv) {
+int main(int argc, char const *const *argv) {
   if (pegtl::analyze<spef_grammar>() != 0) {
     std::cerr << "cycles without progress detected!\n";
     return 1;
@@ -17,7 +16,8 @@ int main(int argc, char const * const * argv) {
 
   if (argc != 2 || std::strcmp(argv[1], "-h") == 0 ||
       std::strcmp(argv[1], "--help") == 0) {
-    std::cerr << "Usage: " << argv[0] << " " << " <filename>.spef\n";
+    std::cerr << "Usage: " << argv[0] << " "
+              << " <filename>.spef\n";
     return 1;
   }
 
@@ -32,10 +32,14 @@ int main(int argc, char const * const * argv) {
 
     // inner try/catch for the parser exceptions
     try {
-      //pegtl::tracer<pegtl::tracer_traits<true, true, true, 4>> tracer(input);
+      //pegtl::tracer<pegtl::tracer_traits<>> tracer(input);
       //tracer.parse<spef_grammar>(input);
       SPEF spef;
-      success = pegtl::parse<pegtl::must<spef_grammar>, spef_action>(input, spef);
+      SPEFHelper spef_h;
+      success = pegtl::parse<pegtl::must<spef_grammar>, spef_action>(
+          input,
+          spef,
+          spef_h);
 
       std::cout << spef;
     } catch (pegtl::parse_error &err) {

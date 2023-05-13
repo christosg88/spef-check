@@ -3,8 +3,12 @@ cmake_minimum_required(VERSION 3.16)
 # set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
 
+# generate the compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # enable all warnings and treat them as errors
-add_compile_options(-Wall -Wextra -pedantic -Werror)
+add_compile_options(-Wall -Wextra -pedantic)
+#add_compile_options(-Werror)
 # enable clang-tidy checks
 #set(CMAKE_CXX_CLANG_TIDY clang-tidy)
 
@@ -15,7 +19,7 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
   add_compile_options(-fcolor-diagnostics)
 endif()
 
-set(allowedBuildTypes Debug Release ASAN UBSAN TSAN Profile)
+set(allowedBuildTypes Debug Release ASAN UBSAN TSAN Profile HeapProfile)
 set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "${allowedBuildTypes}")
 if(CMAKE_BUILD_TYPE AND NOT CMAKE_BUILD_TYPE IN_LIST allowedBuildTypes)
   message(FATAL_ERROR "Invalid build type: ${CMAKE_BUILD_TYPE}")
@@ -28,16 +32,20 @@ set(CMAKE_CXX_FLAGS_ASAN "-fsanitize=address -fno-omit-frame-pointer -fno-optimi
 set(CMAKE_CXX_FLAGS_UBSAN "-fsanitize=undefined -g -O0" CACHE STRING "Undefined Behaviour Sanitizer" FORCE)
 set(CMAKE_CXX_FLAGS_TSAN "-fsanitize=thread -g -O0" CACHE STRING "Thread Sanitizer" FORCE)
 set(CMAKE_CXX_FLAGS_PROFILE "-pg -g" CACHE STRING "gprof profiler" FORCE)
+set(CMAKE_CXX_FLAGS_HEAPPROFILE "-g -O0" CACHE STRING "Heap Profiler" FORCE)
 
 project(spef-check
   VERSION 0.0.1
   DESCRIPTION "A tool to parse and check the correctness of a SPEF file"
   LANGUAGES CXX)
 
-find_package(pegtl)
+find_package(pegtl REQUIRED)
+find_package(fmt REQUIRED)
 
-add_executable(spef_check spef_check.cpp spef_actions.cpp)
-target_link_libraries(spef_check PRIVATE taocpp::pegtl)
+add_executable(spef_check spef_check.cpp)
+target_link_libraries(spef_check PRIVATE taocpp::pegtl fmt::fmt)
 if(CMAKE_BUILD_TYPE STREQUAL Profile)
   target_link_options(spef_check PRIVATE "-pg")
+elseif(CMAKE_BUILD_TYPE STREQUAL HeapProfile)
+  target_link_libraries(spef_check PRIVATE tcmalloc)
 endif()
