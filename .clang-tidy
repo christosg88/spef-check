@@ -7,9 +7,12 @@
   -cppcoreguidelines-owning-memory,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
   misc-*,
+  -misc-non-private-member-variables-in-classes,
   modernize-*,
   -modernize-use-trailing-return-type,
   performance-*,
   portability-*,
-  readability-*
+  readability-*,
+  -readability-identifier-length,
+  -readability-named-parameter
  UseColor: true
