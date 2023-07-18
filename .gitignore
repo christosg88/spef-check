@@ -1,2 +1,4 @@
 build/
 .cache/
+third-party/fmt-*
+third-party/pegtl-*
