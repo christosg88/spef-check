@@ -95,9 +95,13 @@ std::ostream &operator<<(std::ostream &os, ConnAttr const *conn_attr) {
 
 std::ostream &operator<<(std::ostream &os, DNet const &d_net) {
   fmt::println(os, "\n*D_NET {} {}", d_net.m_name, d_net.m_total_cap);
+  if (d_net.m_routing_conf != 0) {
+    fmt::println(os, "*V {}", d_net.m_routing_conf);
+  }
   fmt::println(os, "*CONN");
   for (auto const &connection : d_net.m_conns) {
     fmt::print(
+        os,
         "*{} {} {}",
         get_connection_type_sv(connection.m_type),
         connection.m_name,
@@ -105,22 +109,35 @@ std::ostream &operator<<(std::ostream &os, DNet const &d_net) {
     for (auto const &conn_attr : connection.m_conn_attrs) {
       os << conn_attr.get();
     }
-    fmt::println("");
+    fmt::println(os, "");
+  }
+  for (auto const &node : d_net.m_nodes) {
+    // TODO: change ':' with spef pin delimiter
+    fmt::println(
+        os,
+        "*N {}:{} {} {}",
+        d_net.m_name,
+        node.m_name,
+        node.m_coords->m_coord.x,
+        node.m_coords->m_coord.y);
   }
   if (!d_net.m_ground_caps.empty() || !d_net.m_coupling_caps.empty()) {
     // TODO: add connection attributes
+    std::size_t cap_idx = 1;
     fmt::println(os, "*CAP");
     for (auto const &ground_cap : d_net.m_ground_caps) {
       fmt::println(
+          os,
           "{} {} {}",
-          ground_cap.m_id,
+          cap_idx++,
           ground_cap.m_node,
           ground_cap.m_cap);
     }
     for (auto const &coupling_cap : d_net.m_coupling_caps) {
       fmt::println(
+          os,
           "{} {} {} {}",
-          coupling_cap.m_id,
+          cap_idx++,
           coupling_cap.m_node1,
           coupling_cap.m_node2,
           coupling_cap.m_cap);
@@ -130,6 +147,7 @@ std::ostream &operator<<(std::ostream &os, DNet const &d_net) {
     fmt::println(os, "*RES");
     for (auto const &res : d_net.m_resistances) {
       fmt::println(
+          os,
           "{} {} {} {}",
           res.m_id,
           res.m_node1,
@@ -137,7 +155,7 @@ std::ostream &operator<<(std::ostream &os, DNet const &d_net) {
           res.m_res);
     }
   }
-  fmt::println("*END");
+  fmt::println(os, "*END");
   return os;
 }
 
@@ -146,7 +164,7 @@ std::ostream &operator<<(std::ostream &os, Port const &port) {
   for (auto const &conn_attr : port.m_conn_attrs) {
     os << conn_attr.get();
   }
-  fmt::println("");
+  fmt::println(os, "");
   return os;
 }
 
@@ -218,20 +236,20 @@ std::ostream &operator<<(std::ostream &os, SPEF const &spef) {
         spef.m_induct_scale.unit);
   }
 
-  if (!spef.m_ground_nets.empty()) {
+  if (!spef.m_power_nets.empty()) {
     fmt::print(os, "*POWER_NETS");
     for (auto const &power_net : spef.m_power_nets) {
       fmt::print(os, " {}", power_net);
     }
-    fmt::println("");
+    fmt::println(os, "");
   }
 
-  if (!spef.m_power_nets.empty()) {
+  if (!spef.m_ground_nets.empty()) {
     fmt::print(os, "*GROUND_NETS");
     for (auto const &ground_net : spef.m_ground_nets) {
       fmt::print(os, " {}", ground_net);
     }
-    fmt::println("");
+    fmt::println(os, "");
   }
 
   if (!spef.m_ports.empty()) {
@@ -253,10 +271,10 @@ std::ostream &operator<<(std::ostream &os, SPEF const &spef) {
   }
 
   if (!spef.m_name_map.empty()) {
-    fmt::println("\n*NAME_MAP");
+    fmt::println(os, "\n*NAME_MAP");
     // TODO: The order depends on the unordered map
     for (auto const &[index, name] : spef.m_name_map) {
-      fmt::println("{} {}", index, name);
+      fmt::println(os, "{} {}", index, name);
     }
   }
 

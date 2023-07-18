@@ -345,6 +345,7 @@ struct DNet {
 
   std::string m_name;
   cap_t m_total_cap;
+  unsigned int m_routing_conf;  // routing confidence
   std::vector<Connection> m_conns;
   std::vector<InternalNode> m_nodes;
   std::vector<GroundCapacitance> m_ground_caps;
@@ -365,13 +366,11 @@ struct DNet::InternalNode {
 };
 
 struct DNet::GroundCapacitance {
-  std::string m_id;
   std::string m_node;
   cap_t m_cap;
 };
 
 struct DNet::CouplingCapacitance {
-  std::string m_id;
   std::string m_node1;
   std::string m_node2;
   cap_t m_cap;
@@ -387,9 +386,17 @@ struct DNet::Resistance {
 struct RNet {
   std::string m_name;
   cap_t m_total_cap;
+  unsigned int m_routing_conf;
 };
 
 struct SPEF {
+  SPEF() = default;
+  SPEF(SPEF const &) = delete;
+  SPEF(SPEF &&) = default;
+  SPEF &operator=(SPEF const &) = delete;
+  SPEF &operator=(SPEF &&) = default;
+  ~SPEF() = default;
+
   std::string m_version;
   std::string m_design_name;
   std::string m_date;

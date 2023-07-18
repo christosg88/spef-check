@@ -202,7 +202,6 @@ struct spef_action<spef_bus_delim_def> {
       spef.m_suffix_bus_delim = spef_h.m_tokens[2][0];
     } else {
       spef.m_prefix_bus_delim = spef_h.m_tokens[1][0];
-      spef.m_suffix_bus_delim = spef_h.m_tokens[1][0];
     }
   }
 };
@@ -479,6 +478,25 @@ struct spef_action<spef_r_net_end> {
 };
 
 template<>
+struct spef_action<spef_routing_conf> {
+  template<typename Action>
+  static void apply(Action const &input, SPEF &, SPEFHelper &spef_h) {
+    split(input.string_view(), spef_h.m_tokens);
+    auto const &number = spef_h.m_tokens[2];
+    unsigned int routing_conf{};
+    auto const [_, ec] =
+        std::from_chars(number.begin(), number.end(), routing_conf);
+    handle_from_chars(ec, number);
+
+    if (spef_h.reading_d_net) {
+      spef_h.m_current_d_net.m_routing_conf = routing_conf;
+    } else if (spef_h.reading_r_net) {
+      spef_h.m_current_r_net.m_routing_conf = routing_conf;
+    }
+  }
+};
+
+template<>
 struct spef_action<spef_external_connection_def> {
   template<typename Action>
   static void apply(Action const &input, SPEF &, SPEFHelper &spef_h) {
@@ -535,18 +553,18 @@ struct spef_action<spef_cap_elem_ground> {
   static void apply(Action const &input, SPEF &, SPEFHelper &spef_h) {
     split(input.string_view(), spef_h.m_tokens);
 
-    auto const id = spef_h.m_tokens[0];
     auto const node = spef_h.m_tokens[1];
     cap_t cap{};
     auto const cap_value = spef_h.m_tokens[2];
-    auto const [_, ec] =
-        std::from_chars(cap_value.begin(), cap_value.end(), cap);
-    handle_from_chars(ec, cap_value);
+    {
+      auto const [_, ec] =
+          std::from_chars(cap_value.begin(), cap_value.end(), cap);
+      handle_from_chars(ec, cap_value);
+    }
 
     // TODO: add sensitivity
 
-    spef_h.m_current_d_net.m_ground_caps.push_back(
-        {std::string{id}, std::string{node}, cap});
+    spef_h.m_current_d_net.m_ground_caps.push_back({std::string{node}, cap});
   }
 };
 
@@ -556,19 +574,20 @@ struct spef_action<spef_cap_elem_coupling> {
   static void apply(Action const &input, SPEF &, SPEFHelper &spef_h) {
     split(input.string_view(), spef_h.m_tokens);
 
-    auto const id = spef_h.m_tokens[0];
     auto const node1 = spef_h.m_tokens[1];
     auto const node2 = spef_h.m_tokens[2];
     cap_t cap{};
     auto const cap_value = spef_h.m_tokens[3];
-    auto const [_, ec] =
-        std::from_chars(cap_value.begin(), cap_value.end(), cap);
-    handle_from_chars(ec, cap_value);
+    {
+      auto const [_, ec] =
+          std::from_chars(cap_value.begin(), cap_value.end(), cap);
+      handle_from_chars(ec, cap_value);
+    }
 
     // TODO: add sensitivity
 
     spef_h.m_current_d_net.m_coupling_caps.push_back(
-        {std::string{id}, std::string{node1}, std::string{node2}, cap});
+        {std::string{node1}, std::string{node2}, cap});
   }
 };
 
