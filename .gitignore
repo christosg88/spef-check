@@ -2,3 +2,7 @@ build/
 .cache/
 third-party/fmt-*
 third-party/pegtl-*
+third-party/cpp_dbg_out
+third-party/thread-pool-*
+third-party/zlib-*
+compile_commands.json
