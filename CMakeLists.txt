@@ -44,8 +44,23 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "MSAN" AND "${CMAKE_CXX_COMPILER_ID}" STREQUAL
   message(FATAL_ERROR "Memory sanitizer is not currently supported by gcc. Try clang instead.")
 endif()
 
-find_package(pegtl REQUIRED PATHS ${CMAKE_SOURCE_DIR}/third-party/pegtl-3.2.7 NO_DEFAULT_PATH)
-find_package(fmt REQUIRED PATHS ${CMAKE_SOURCE_DIR}/third-party/fmt-10.0.0 NO_DEFAULT_PATH)
+set(CMAKE_PREFIX_PATH
+  ${CMAKE_SOURCE_DIR}/third-party/pegtl-3.2.7
+  ${CMAKE_SOURCE_DIR}/third-party/fmt-10.0.0
+  ${CMAKE_SOURCE_DIR}/third-party/zlib-1.2.13)
+find_package(PEGTL REQUIRED)
+find_package(FMT REQUIRED)
+set(ZLIB_USE_STATIC_LIBS ON)
+find_package(ZLIB REQUIRED)
+find_package(Threads REQUIRED)
+add_library(thread-pool INTERFACE)
+target_include_directories(thread-pool INTERFACE ${CMAKE_SOURCE_DIR}/third-party/thread-pool-3.5.0/include)
+add_library(cpp_dbg_out INTERFACE)
+target_include_directories(cpp_dbg_out INTERFACE ${CMAKE_SOURCE_DIR}/third-party/cpp_dbg_out)
+
+message(STATUS "Linking PEGTL version ${PEGTL_VERSION}")
+message(STATUS "Linking FMT version ${FMT_VERSION}")
+message(STATUS "Linking ZLIB version ${ZLIB_VERSION}")
 
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 add_subdirectory(src)

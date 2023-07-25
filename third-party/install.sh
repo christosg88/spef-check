@@ -10,5 +10,17 @@ cmake -B fmt-build -S fmt-src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=
 cmake --build fmt-build -- -j$(nproc)
 cmake --install fmt-build
 
+echo "Cloning zlib-1.2.13"
+git clone --depth 1 --branch v1.2.13 https://github.com/madler/zlib.git zlib-src
+cmake -B zlib-build -S zlib-src -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=./zlib-1.2.13
+cmake --build zlib-build -- -j$(nproc)
+cmake --install zlib-build
+
+echo "Cloning thread-pool"
+git clone --depth 1 --branch v3.5.0 https://github.com/bshoshany/thread-pool.git thread-pool-3.5.0
+
+echo "Cloning cpp_dbg_out"
+git clone --depth 1 https://github.com/christosg88/cpp_dbg_out.git cpp_dbg_out
+
 echo "Cleaning up build and src directories"
-rm -rf pegtl-src pegtl-build fmt-src fmt-build
+rm -rf pegtl-src pegtl-build fmt-src fmt-build zlib-src zlib-build
