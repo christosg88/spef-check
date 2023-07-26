@@ -2,7 +2,6 @@
 #include <array>
 #include <atomic>
 #include <condition_variable>
-#include <dbg_out.h>
 #include <fmt/core.h>
 #include <fmt/std.h>
 #include <fstream>
@@ -26,17 +25,26 @@ private:
 
   mutable std::vector<std::mutex> m_mtx;
   mutable std::vector<std::condition_variable> m_cond;
-  std::vector<unsigned char>
-      m_consumed;  // unsigned char instead of bool due to std::vector<bool> specialization
+  // unsigned char instead of bool due to std::vector<bool> specialization
+  std::unique_ptr<bool[]> m_consumed;
 
   std::vector<std::ifstream> m_files;
   std::atomic<std::size_t> m_idx{};
-  std::atomic<std::size_t> m_chunks_consumed{};
-  std::atomic<std::size_t>
-      m_chunks_produced{};  // when we have more consumers than producers, we must make sure that
-                            // no two consumers get the same produced chunk
+  std::mutex m_consumed_mtx;
+  std::condition_variable m_consumed_cond;
+  std::shared_mutex m_produced_mtx;
+  std::condition_variable_any m_produced_cond;
+  std::size_t m_chunks_consumed{};
+  // when we have more consumers than producers, we must make sure that no two consumers get the same produced chunk
+  std::size_t m_chunks_produced{};
+  std::atomic<std::size_t> m_chunks_returned{};
+  std::atomic<std::size_t> m_empty_returned{};
 
-  std::atomic<bool> m_finished{false};
+  // we need the m_finished member, in case the user requests chunk 1000 and only 1 chunk can be produced
+  // in this case, the get_chunk function must be able to stop waiting and return the empty buffer
+  std::atomic<std::size_t> m_finished{};
+  bool m_all_done{false};
+
   std::mutex m_gz_mutex;
   gzFile m_gz_file{};
   std::string m_error{};
@@ -51,11 +59,14 @@ public:
         m_buffers(m_num_producers),
         m_mtx(m_num_producers),
         m_cond(m_num_producers),
-        m_consumed(m_num_producers, true),
+        m_consumed(std::make_unique<bool[]>(m_num_producers)),
         m_files(m_num_producers) {
     std::generate(begin(m_buffers), end(m_buffers), [buffer_size] {
       return std::vector<char>(buffer_size);
     });
+
+    std::fill_n(m_consumed.get(), m_num_producers, true);
+
     if (is_gzip_file(filename)) {
       m_gz_file = gzopen(filename, "rb");
       if (m_gz_file == Z_NULL) {
@@ -77,13 +88,7 @@ public:
   MTFileReader &operator=(MTFileReader const &) = delete;
   MTFileReader(MTFileReader &&) = delete;
   MTFileReader &operator=(MTFileReader &&) = delete;
-  ~MTFileReader() {
-    fmt::print(
-        "Produced:{} Consumed:{}\n",
-        m_chunks_produced.load(),
-        m_chunks_consumed.load());
-    gzclose(m_gz_file);
-  }
+  ~MTFileReader() { gzclose(m_gz_file); }
 
   [[nodiscard]] std::string const &get_error() const { return m_error; }
 
@@ -99,115 +104,112 @@ public:
     while (true) {
       // get the index and post-increment it atomically
       auto idx = m_idx.fetch_add(1);
-      // wrap-around the write index
       auto c_idx = idx % m_num_producers;
 
       auto &file = m_files[c_idx];
       auto &buffer = m_buffers[c_idx];
 
-      std::unique_lock<std::mutex> lck(m_mtx[c_idx]);
-      dbg_out(fmt::format("P: Waiting to produce buffer {}({})", c_idx, idx));
       // wait for a buffer to become available
+      std::unique_lock<std::mutex> lck(m_mtx[c_idx]);
       m_cond[c_idx].wait(lck, [&] { return m_consumed[c_idx]; });
 
-      dbg_out(fmt::format(
-          "P: Producing buffer {}({}) -- {} -- {}",
-          c_idx,
-          idx,
-          (void *)buffer.data(),
-          (void *)file.rdbuf()));
-
-      file.read(buffer.data(), (long)m_buffer_size);
-
-      auto const bytes_read = (std::size_t)file.gcount();
-      if (file.fail() && bytes_read == 0) {
-        dbg_out(fmt::format(
-            "P: Didn't produce buffer because I tried to read past the EOF "
-            "{}({})",
-            c_idx,
-            idx));
-        if (idx != m_chunks_produced) {
-          // only the producer who produced the last chunk should set m_finished
-          return;
-        }
-        // we're at the EOF
-        m_finished = true;
-        // notify all waiting producers and consumers
+      if (file.peek() == std::char_traits<char>::eof()) {
         lck.unlock();
-        std::for_each(
-            begin(m_cond),
-            end(m_cond),
-            std::mem_fn(&std::condition_variable::notify_all));
+
+        auto finished = m_finished.fetch_add(1);
+        if (finished == m_num_producers - 1) {
+          // this is the last producer which tried to read past the EOF, so lock
+          // all m_mtx mutexes, and notify all waiting threads that all
+          // producers are done
+          for (std::size_t i = 0; i < m_num_producers; ++i) {
+            m_mtx[i].lock();
+          }
+          m_all_done = true;
+          for (std::size_t i = 0; i < m_num_producers; ++i) {
+            m_cond[i].notify_all();
+            m_mtx[i].unlock();
+          }
+        }
         return;
       }
 
-      ++m_chunks_produced;
-      m_consumed[c_idx] = false;
+      file.read(buffer.data(), (long)m_buffer_size);
 
       // we read fewer bytes than the size of the buffer, so shrink the buffer
+      auto const bytes_read = (std::size_t)file.gcount();
       if (bytes_read != m_buffer_size) {
         buffer.resize(bytes_read);
       }
 
       file.seekg((long)((m_num_producers - 1) * m_buffer_size), std::ios::cur);
 
-      dbg_out(fmt::format("P: Produced buffer {}({})", c_idx, idx));
       lck.unlock();
+      std::scoped_lock sl(m_mtx[c_idx], m_produced_mtx);
+      m_consumed[c_idx] = false;
+      ++m_chunks_produced;
+      m_produced_cond.notify_all();
       m_cond[c_idx].notify_all();
     }
   }
 
-  std::vector<char> const &get_chunk(std::size_t idx) const {
+  std::vector<char> const &get_chunk(std::size_t idx) {
     // wrap-around the read index
     auto c_idx = idx % m_num_producers;
     // lock the mutex of the r_idx buffer
-    std::unique_lock lck{m_mtx[c_idx]};
-    dbg_out(fmt::format("C: Waiting to get chunk {}({})", c_idx, idx));
-    // wait for the buffer to not be consumed, and make sure no two consumers get the same unconsumed chunk
-    m_cond[c_idx].wait(lck, [&]() {
-      dbg_out(
-          fmt::format("C: idx:{} produced:{}", idx, m_chunks_produced.load()));
-      return m_finished || (!m_consumed[c_idx] && idx < m_chunks_produced);
-    });
+    // we need to wait for two things:
+    // 1. for the buffer to not be consumed
+    // 2. for the produced chunks to be greater than idx
+    while (true) {
+      {
+        // wait for the buffer to not be consumed, or all producers to have
+        // finished
+        std::unique_lock lck{m_mtx[c_idx]};
+        m_cond[c_idx].wait(lck, [&]() {
+          return !m_consumed[c_idx] || m_all_done;
+        });
 
-    if (!m_consumed[c_idx] && idx < m_chunks_produced) {
-      dbg_out(fmt::format(
-          "C: Getting chunk buffer {}({}) with size {} and data {}",
-          c_idx,
-          idx,
-          m_buffers[c_idx].size(),
-          (void *)m_buffers[c_idx].data()));
-      return m_buffers[c_idx];
+        if (m_all_done && m_consumed[c_idx]) {
+          ++m_empty_returned;
+          return m_empty_buffer;
+        }
+      }
+      {
+        // if the produced chunks are greater than idx, return the buffer, else
+        // continue waiting until all producers have finished or the buffer has
+        // been consumed by another consumer
+        std::shared_lock lck(m_produced_mtx);
+        if (idx < m_chunks_produced) {
+          ++m_chunks_returned;
+          return m_buffers[c_idx];
+        }
+      }
     }
-
-    dbg_out(fmt::format("C: Returning empty buffer"));
-    return m_empty_buffer;
   }
 
   void mark_chunk(std::size_t idx) {
-    // wrap-around the read index
-    auto c_idx = idx % m_num_producers;
-    std::unique_lock lck(m_mtx[c_idx]);
-    dbg_out(fmt::format("C: Waiting to mark chunk ({})", idx));
+    // we need to wait for the previous chunk to be consumed, to mark this
+    // chunk as consumed
     if (idx != 0) {
-      // we need to wait for the previous chunk to be consumed, to mark this
-      // chunk as consumed
-      m_cond[c_idx].wait(lck, [&] { return idx <= m_chunks_consumed; });
+      std::unique_lock lck(m_consumed_mtx);
+      m_consumed_cond.wait(lck, [&] { return idx <= m_chunks_consumed; });
     }
 
-    // mark the current chunk as consumed, and notify the current chunk's
-    // condition_variable in case a next chunk is waiting for it to be consumed
+    auto c_idx = idx % m_num_producers;
+    // we need to lock both mutexes, since the first controls changes to the
+    // m_consumed and the second changes to the m_chunks consumed
+    std::scoped_lock c_lck(m_mtx[c_idx], m_consumed_mtx);
+    // mark the current chunk as consumed, and increment the number of consumed
+    // chunks
     m_consumed[c_idx] = true;
     ++m_chunks_consumed;
-    dbg_out(fmt::format("C: Marked chunk ({})", idx));
     // we notify_all, because there might be more than one threads waiting on
     // this condition_variable: a produce_* function waiting to refill this
     // buffer and the mark_chunk waiting on the current condition_variable to
     // mark the next chunk consumed
-    lck.unlock();
-    auto n_idx = (idx + 1) % m_num_producers;
     m_cond[c_idx].notify_all();
-    m_cond[n_idx].notify_all();
+    // we notify_all, because many threads will be waiting for the change in
+    // m_chunks_consumed
+    m_consumed_cond.notify_all();
   }
 
   //void produce_comp() {
