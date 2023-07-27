@@ -1,5 +1,5 @@
 #include <filesystem>
-#include <fstream>
+#include <cstdio>
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -18,9 +18,21 @@ void consume(std::size_t id, std::atomic<std::size_t> &idx, MTFileReader &reader
     if (chunk.empty()) {
       break;
     }
-    std::ofstream ofs(fmt::format("/SCRATCH/gkan/out/c{:05}_w{:02}.txt", c_idx, id));
-    ofs.write(chunk.data(), chunk.size());
-    ofs.close();
+    std::FILE *of = std::fopen(fmt::format("/SCRATCH/gkan/out/c{:05}_w{:02}.txt", c_idx, id).c_str(), "wb");
+    auto bytes_written = std::fwrite(chunk.data(), sizeof(char), chunk.size(), of);
+    if (bytes_written != chunk.size()) {
+      if (std::ferror(of) != 0) {
+        fmt::print("An error occured while writing chunk {}\n", c_idx);
+      } else {
+        fmt::print("No error occured but fewer bytes than available were written while writing chunk {}\n", c_idx);
+      }
+      return;
+    }
+    auto ec = std::fclose(of);
+    if (ec != 0) {
+      fmt::print("An error occured while closing the file for chunk {}\n", c_idx);
+      return;
+    }
     reader.mark_chunk(c_idx);
   }
 }
@@ -134,6 +146,10 @@ void test3(fs::path const &spef_file) {
       }
     }
   }
+}
+
+void test4(fs::path const &spef_file) {
+  run_test(spef_file, 2, 2, 3);
 }
 
 int main(int argc, char const *const *argv) {

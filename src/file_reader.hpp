@@ -2,9 +2,9 @@
 #include <array>
 #include <atomic>
 #include <condition_variable>
+#include <cstdio>
 #include <fmt/core.h>
 #include <fmt/std.h>
-#include <fstream>
 #include <functional>
 #include <mutex>
 #include <shared_mutex>
@@ -28,7 +28,7 @@ private:
   // unsigned char instead of bool due to std::vector<bool> specialization
   std::unique_ptr<bool[]> m_consumed;
 
-  std::vector<std::ifstream> m_files;
+  std::vector<std::FILE *> m_files;
   std::atomic<std::size_t> m_idx{};
   std::mutex m_consumed_mtx;
   std::condition_variable m_consumed_cond;
@@ -76,11 +76,15 @@ public:
     } else {
       // open NUM_PRODUCERS file streams to the same file
       std::generate(begin(m_files), end(m_files), [filename] {
-        return std::ifstream(filename, std::ios::binary);
+        return std::fopen(filename, "rb");
       });
       // advance all file streams, except the first one, to the needed position
       for (std::size_t idx = 1; idx < m_num_producers; ++idx) {
-        m_files[idx].seekg((long)(idx * m_buffer_size));
+        auto ec =
+            std::fseek(m_files[idx], (long)(idx * m_buffer_size), SEEK_SET);
+        if (ec != 0) {
+          fmt::print("fseek failed for file {}\n", idx);
+        }
       }
     }
   }
@@ -88,7 +92,15 @@ public:
   MTFileReader &operator=(MTFileReader const &) = delete;
   MTFileReader(MTFileReader &&) = delete;
   MTFileReader &operator=(MTFileReader &&) = delete;
-  ~MTFileReader() { gzclose(m_gz_file); }
+  ~MTFileReader() {
+    for (std::size_t idx = 0; idx < m_num_producers; ++idx) {
+      auto ec = std::fclose(m_files[idx]);
+      if (ec != 0) {
+        fmt::print("An error occured while closing a file {}\n", idx);
+      }
+    }
+    gzclose(m_gz_file);
+  }
 
   [[nodiscard]] std::string const &get_error() const { return m_error; }
 
@@ -100,51 +112,69 @@ public:
     //}
   }
 
+  void set_all_done(std::size_t c_idx) {
+    auto finished = m_finished.fetch_add(1);
+    if (finished == m_num_producers - 1) {
+      // this is the last producer which tried to read past the EOF, so lock
+      // all m_mtx mutexes, and notify all waiting threads that all
+      // producers are done
+      for (std::size_t i = 0; i < m_num_producers; ++i) {
+        if (i != c_idx) {
+          m_mtx[i].lock();
+        }
+      }
+      m_all_done = true;
+      for (std::size_t i = 0; i < m_num_producers; ++i) {
+        m_cond[i].notify_all();
+        if (i != c_idx) {
+          m_mtx[i].unlock();
+        }
+      }
+    }
+  }
+
   void produce_uncomp() {
     while (true) {
       // get the index and post-increment it atomically
       auto idx = m_idx.fetch_add(1);
       auto c_idx = idx % m_num_producers;
 
-      auto &file = m_files[c_idx];
       auto &buffer = m_buffers[c_idx];
 
       // wait for a buffer to become available
       std::unique_lock<std::mutex> lck(m_mtx[c_idx]);
       m_cond[c_idx].wait(lck, [&] { return m_consumed[c_idx]; });
 
-      if (file.peek() == std::char_traits<char>::eof()) {
-        lck.unlock();
-
-        auto finished = m_finished.fetch_add(1);
-        if (finished == m_num_producers - 1) {
-          // this is the last producer which tried to read past the EOF, so lock
-          // all m_mtx mutexes, and notify all waiting threads that all
-          // producers are done
-          for (std::size_t i = 0; i < m_num_producers; ++i) {
-            m_mtx[i].lock();
-          }
-          m_all_done = true;
-          for (std::size_t i = 0; i < m_num_producers; ++i) {
-            m_cond[i].notify_all();
-            m_mtx[i].unlock();
-          }
-        }
-        return;
-      }
-
-      file.read(buffer.data(), (long)m_buffer_size);
+      auto const bytes_read = std::fread(
+          buffer.data(),
+          sizeof(char),
+          m_buffer_size,
+          m_files[c_idx]);
 
       // we read fewer bytes than the size of the buffer, so shrink the buffer
-      auto const bytes_read = (std::size_t)file.gcount();
       if (bytes_read != m_buffer_size) {
         buffer.resize(bytes_read);
       }
 
-      file.seekg((long)((m_num_producers - 1) * m_buffer_size), std::ios::cur);
+      if (bytes_read == 0) {
+        if (std::ferror(m_files[c_idx]) != 0) {
+          fmt::print("An error occured while reading file {}\n", c_idx);
+        }
+        set_all_done(c_idx);
+        return;
+      }
 
-      lck.unlock();
-      std::scoped_lock sl(m_mtx[c_idx], m_produced_mtx);
+      auto ec = std::fseek(
+          m_files[c_idx],
+          (long)((m_num_producers - 1) * m_buffer_size),
+          SEEK_CUR);
+      if (ec != 0) {
+        fmt::print("fseek failed for file {}\n", idx);
+        set_all_done(c_idx);
+        return;
+      }
+
+      std::scoped_lock sl(m_produced_mtx);
       m_consumed[c_idx] = false;
       ++m_chunks_produced;
       m_produced_cond.notify_all();
